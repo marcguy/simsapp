@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?><database>
+    <element label="Validation" max_length="40" name="x_snc_sim_client_validation" type="collection">
+        <element label="Best practice" max_length="8000" name="best_practice" type="html"/>
+        <element label="Feedback" max_length="8000" name="feedback" type="html"/>
+        <element label="Result" max_length="40" name="result" type="string"/>
+        <element label="Script" max_length="8000" name="script" type="script"/>
+        <element label="Task" max_length="40" name="task" type="string"/>
+    </element>
+</database>

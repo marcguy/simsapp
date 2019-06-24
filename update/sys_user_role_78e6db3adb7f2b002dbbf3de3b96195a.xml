@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_user_role">
+    <sys_user_role action="INSERT_OR_UPDATE">
+        <assignable_by/>
+        <can_delegate>true</can_delegate>
+        <description/>
+        <elevated_privilege>false</elevated_privilege>
+        <encryption_context/>
+        <grantable>true</grantable>
+        <includes_roles/>
+        <name>x_snc_sim_client.admin</name>
+        <requires_subscription>-1</requires_subscription>
+        <scoped_admin>true</scoped_admin>
+        <suffix>admin</suffix>
+        <sys_class_name>sys_user_role</sys_class_name>
+        <sys_created_by>marc.guy</sys_created_by>
+        <sys_created_on>2019-02-27 09:13:51</sys_created_on>
+        <sys_customer_update>false</sys_customer_update>
+        <sys_id>78e6db3adb7f2b002dbbf3de3b96195a</sys_id>
+        <sys_mod_count>1</sys_mod_count>
+        <sys_name>x_snc_sim_client.admin</sys_name>
+        <sys_package display_value="Sim Client" source="x_snc_sim_client">14de5e51db3327002dbbf3de3b961924</sys_package>
+        <sys_policy/>
+        <sys_replace_on_upgrade>false</sys_replace_on_upgrade>
+        <sys_scope display_value="Sim Client">14de5e51db3327002dbbf3de3b961924</sys_scope>
+        <sys_update_name>sys_user_role_78e6db3adb7f2b002dbbf3de3b96195a</sys_update_name>
+        <sys_updated_by>marc.guy</sys_updated_by>
+        <sys_updated_on>2019-02-27 09:14:26</sys_updated_on>
+    </sys_user_role>
+</record_update>

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_ws_operation">
+    <sys_ws_operation action="INSERT_OR_UPDATE">
+        <active>true</active>
+        <consumes>application/json,application/xml,text/xml</consumes>
+        <consumes_customized>false</consumes_customized>
+        <default_operation_uri/>
+        <enforce_acl>cf9d01d3e73003009d6247e603f6a990</enforce_acl>
+        <http_method>POST</http_method>
+        <name>setup</name>
+        <operation_script><![CDATA[(function process(/*RESTAPIRequest*/ request, /*RESTAPIResponse*/ response) {
+	
+	var requestBody = request.body;
+
+    // implement resource here
+	//sets up the simulator client to be accessed by the user	
+var user = new GlideRecord('sys_user');
+user.initialize();
+user.user_name = requestBody.data.user_name;
+user.first_name = requestBody.data.first_name;
+user.last_name = requestBody.data.last_name;
+user.email = requestBody.data.user_email;
+user.user_password.setDisplayValue(requestBody.data.password);
+user.insert();
+setUserRole(user,'admin');
+
+//GlideSecurityManager.get().enableElevatedRole('security_admin'); //elevate to security_admin
+//setUserRole(user,'security_admin'); //no longer able to do this
+	
+ var adminuser = new GlideRecord("sys_user");
+ adminuser.initialize();
+ adminuser.user_name.setValue("sim_admin");
+ adminuser.first_name.setValue("SIM");
+ adminuser.last_name.setValue("Admin");
+ adminuser.user_password.setDisplayValue("admin_sim_password");
+ var usr_id = adminuser.insert();
+ setUserRole(adminuser,'admin');
+ setUserRole(adminuser,'x_snc_sim_client.admin');
+// setUserRole(adminuser,'security_admin'); //no longer able to do this
+
+function setUserRole(user,role){
+	var user_role = new GlideRecord('sys_user_has_role');
+	user_role.addQuery('user',user_role.sys_id);
+	user_role.addQuery('role',role);
+	user_role.query();
+	if(!user_role.next()){
+		user_role.initialize();
+		user_role.user = user.sys_id;
+		user_role.role.setDisplayValue(role);
+		user_role.insert();
+	}
+}
+
+
+})(request, response);]]></operation_script>
+        <operation_uri>/api/x_snc_sim_client/client/setup</operation_uri>
+        <produces>application/json,application/xml,text/xml</produces>
+        <produces_customized>false</produces_customized>
+        <relative_path>/setup</relative_path>
+        <request_example/>
+        <requires_acl_authorization>true</requires_acl_authorization>
+        <requires_authentication>true</requires_authentication>
+        <requires_snc_internal_role>false</requires_snc_internal_role>
+        <short_description/>
+        <sys_class_name>sys_ws_operation</sys_class_name>
+        <sys_created_by>marc.guy</sys_created_by>
+        <sys_created_on>2019-03-12 16:08:48</sys_created_on>
+        <sys_customer_update>false</sys_customer_update>
+        <sys_id>ec423b03db047300b3894662159619e0</sys_id>
+        <sys_mod_count>7</sys_mod_count>
+        <sys_name>setup</sys_name>
+        <sys_package display_value="Sim Client" source="x_snc_sim_client">14de5e51db3327002dbbf3de3b961924</sys_package>
+        <sys_policy>protected</sys_policy>
+        <sys_replace_on_upgrade>false</sys_replace_on_upgrade>
+        <sys_scope display_value="Sim Client">14de5e51db3327002dbbf3de3b961924</sys_scope>
+        <sys_update_name>sys_ws_operation_ec423b03db047300b3894662159619e0</sys_update_name>
+        <sys_updated_by>marc.guy</sys_updated_by>
+        <sys_updated_on>2019-04-18 10:29:03</sys_updated_on>
+        <web_service_definition display_value="Client">f2023703db047300b3894662159619c4</web_service_definition>
+        <web_service_version/>
+    </sys_ws_operation>
+</record_update>

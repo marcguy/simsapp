@@ -1,0 +1,805 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_script_include">
+    <sys_script_include action="INSERT_OR_UPDATE">
+        <access>public</access>
+        <active>true</active>
+        <api_name>x_snc_sim_client.Validator</api_name>
+        <client_callable>false</client_callable>
+        <description>Used to validate the user has performed the instructions in the simulator client correctly.</description>
+        <name>Validator</name>
+        <script><![CDATA[// JSDoc Stuff
+/**
+ * @typedef CheckForRecordResult
+ * @type Object
+ * @property {number}  count  Number of matching records
+ 	* @property {boolean} exists Flag indicating the existence of at least one record
+ 		* @property {GlideRecord} gr GlideRecord object used to check for the record
+ 			*/
+			
+			/**
+ 			* @typedef CheckForRecordsResult
+ 			* @type Object
+ 			* @property {Array.<CheckForRecordResult>} results - Array of individual CheckForRecordResult objects
+ 				* @property {Boolean} allExist - true if all records exist, false if any record does not
+ 					* @property {Array.<String>} found - array of encoded queries representing records that were found
+ 						* @property {Array.<String>} notFound - array of encoded queries representing records not found
+ 							*/
+							
+							/**
+ 							* @typedef CheckFieldValuesResult
+ 							* @type    Object
+ 							* @property {Boolean} allMatch - true if all fields match, false if any field does not
+ 								* @property {Array.<String>} matchedFields - Array of field names that matched
+ 									* @property {Array.<String>} missedFields  - Array of field names that did not match
+ 										*/
+										
+										/**
+ 										* @typedef QueryObject
+ 										* @type    Object
+ 										* @property {{...(key:value)}} ... - field/value pairs
+ 											* @example
+ 											* {"myField1": "my value 1", "myField2": "my value 2"}
+ 												*/
+												
+												/**
+ 												* Validator
+ 												* @class
+ 												*/
+												
+												var Validator = Class.create();
+												Validator.prototype = {
+													
+													RESULT_SUCCESS: "success",
+													RESULT_PARTIAL: "partial",
+													RESULT_FAILED:  "failed",
+													
+													debugEnabled: false,
+													
+													initialize: function() {
+														/** The flag that enables/disables debug logging */
+														this.debugEnabled = (gs.getProperty("x_snc_sim_client.debug_enabled") == "true");
+														this.validationArray = [];
+														this.last = null; // holds the last validation result object
+													},
+													
+													/**
+ 													* Adds a validation to the current validator.
+ 													*
+ 													* @param   {Object}  validation - Object representing the validation
+ 														* @param   {Boolean} validation.assertion - Boolean value representing the assertion, e.g. myVar == 2
+ 															* @param   {string}  validation.recommendation - Recommendation to return if the assertion fails
+ 																* @returns {Boolean} Result of assertion (can be used for nested validations)
+ 																	*/
+																	addValidation: function(validation) {
+																		this.validationArray.push(validation);
+																		return validation.assertion;
+																	},
+																	
+																	/**
+ 																	* Returns a simple sucess result. Use when no validation is required.
+ 																	* @resturns {Boolean} (always true)
+ 																		*/
+																		noValidationRequired: function() {
+																			var obj = {
+																				"result":         this.RESULT_SUCCESS,
+																				"recommendation": "",
+																				"best_url":       ""
+																			};
+																			
+																			
+																			this.debug("noValidationRequired: result -> " + JSUtil.describeObject(obj));
+																			
+																			return obj;
+																		},
+																		
+																		/**
+ 																		* Accumulates all validations and returns a result representing overall success/failure.
+ 																		*/
+																		validate: function() {
+																			var au = new global.ArrayUtil();
+																			var i, v;
+																			var validationSteps = this.validationArray.length;
+																			var validCount = 0;
+																			var hintArray = [];
+																			var urlArray = []; //added 4/17
+																			// Prep default return object
+																			var obj = {
+																				"result":         this.RESULT_SUCCESS,
+																				"recommendation": "",
+																				"best_url":       ""
+																			};
+																			
+																			// Check each validation
+																			for (i=0; i<validationSteps; i++) {
+																				v = this.validationArray[i];
+																				if (v.assertion === true) {
+																					validCount++;
+																				} else {
+																					if(v.best_url){
+																						hintArray.push("<a href=\"" + v.best_url + "\" target=\"_blank\">"+v.recommendation+"</a><br>");
+																					}
+																					else{
+																						hintArray.push(v.recommendation+"<br>");
+																					}
+																					// Do not check any more validations if we encounter an abort
+																					if (v.abort) {
+																						this.debug("validate: encountered abort, not checking any more validations");
+																						break;
+																					}
+																				}
+																			}
+																			
+																			// Check to see how many checks validated successfully
+																			if (validationSteps === 0) {
+																				obj.result = this.RESULT_SUCCESS;
+																			} else if (validationSteps === validCount) {
+																				obj.result = this.RESULT_SUCCESS;
+																			} else {
+																				// Gather up the hints and URLs
+																				obj.recommendation = au.unique(hintArray).join("\n");
+																				//			obj.best_url = au.unique(urlArray).join("<br>");  //added 4/17 - JB - best practice url field must be HTML!
+																				// Did at least *something* succeed?
+																				if (validCount > 0) {
+																					obj.result = this.RESULT_PARTIAL;
+																				} else {
+																					obj.result = this.RESULT_FAILED;
+																				}
+																			}
+																			
+																			//        this.debug("validate: validationArray -> " + global.JSON().encode(this.validationArray));
+																			//        this.debug("validate: obj -> " + global.JSON().encode(obj));
+																			
+																			return obj;
+																		},
+																		
+																		/**
+ 																		* Check for a series of records based on an array of queries. Useful when checking
+ 																		* for the existence of multiple records at once that may not all have identical queryies.
+ 																		*
+ 																		* @example
+ 																		* // Check to see if 'gale.nolau', 'roger.seid' and 'devon.teston' are members of a group
+ 																		* var allExist = v.checkForRecords("sys_user_grmember", [
+ 																		*   {"group": newGroup, "user.user_name": "gale.nolau"},
+ 																			*   {"group": newGroup, "user.user_name": "roger.seid"},
+ 																				*   {"group": newGroup, "user.user_name": "devon.teston"}
+ 																					* ]).allExist;
+ 																					*
+ 																					* @param {String}             table      table to Check
+ 																						* @param {QueryObject}  queryArray array of query objects matching the form found in the checkForRecord method
+ 																							*
+ 																							* @return {CheckForRecordsResult}
+ 																								*/
+																								checkForRecords: function(table, queryArray) {
+																									this.debug("checkForRecords: table -> " + table);
+																									var i, r;
+																									
+																									var result = {
+																										"results": [],
+																										"allExist": false,
+																										"found": [],
+																										"notFound": []
+																									}
+																									
+																									for (i=0; i<queryArray.length; i++) {
+																										r = this.checkForRecord(table, queryArray[i]);
+																										result.results.push(r);
+																										if (r.exists) {
+																											result.found.push(r.gr.getEncodedQuery());
+																										} else {
+																											result.notFound.push(r.gr.getEncodedQuery());
+																										}
+																									}
+																									
+																									result.allExist = (result.notFound.length == 0);
+																									
+																									//        this.debug("checkForRecords: result -> " + JSUtil.describeObject(result));
+																									
+																									return result;
+																								},
+																								
+																								/**
+ 																								* Checks for the existence of a record matching the fields passed in
+ 																								*
+ 																								* @example
+ 																								* // Check for a script include named "MyNewScript" created by "my.userid"
+ 																								* var exists = v.checkForRecord("sys_script_include", {
+ 																									*   "name": "MyNewScript",
+ 																									*   "sys_created_by": "my.userid"}
+ 																									* ).exists;
+ 																									*
+ 																									* @param {String} table - Table to check
+ 																										* @param {Object} lookupFields - Object representing the field/value pairs to look for
+ 																											* @param {String} lookupFields.field1 - Example field name 1...
+ 																												* @param {String} lookupFields.field2 - Example field name 2...
+ 																													*
+ 																													* @return {CheckForRecordResult}
+ 																														*/
+																														checkForRecord: function(table, lookupFields) {
+																															this.debug("checkForRecord: table -> " + table);
+																															
+																															var gr = new GlideRecord(table);
+																															var f, v, qType;
+																															
+																															for (f in lookupFields) {
+																																v = lookupFields[f.trim()];
+																																
+																																// If the value is an array, we have to extract the query type
+																																if (v instanceof Array) {
+																																	qType = v[0];
+																																	this.debug("checkForRecord: adding query '" + f + " " + qType + " " + v[1] + "'");
+																																	gr.addQuery(f, qType, v[1]);
+																																} else {
+																																	this.debug("checkForRecord: adding query '" + f + "=" + v + "'");
+																																	gr.addQuery(f, v);
+																																}
+																															}
+																															
+																															gr.query();
+																															
+																															// TODO: Convert to GlideAggregate
+																															var count = gr.getRowCount();
+																															
+																															this.debug("checkForRecord: found " + count + " records");
+																															
+																															var result = {
+																																"count": count,
+																																"exists": count > 0,
+																																"gr": gr
+																															}
+																															
+																															return result;
+																														},
+																														
+																														/**
+ 																														* Check for a specific field value across a series of records.
+ 																														*
+ 																														* @param {String} table - Table to query
+ 																															* @param {String} query - Query string to use against table
+ 																																* @param {String} valueField - Field we will inspect on records returned by query
+ 																																	* @param {String} valueShouldBe - Value we expect to find on each record
+ 																																		*
+ 																																		* @return {Boolean} true if field matches across all records, false if it doesn't
+ 																																			*/
+																																			checkFieldValueEqualsAcrossRecords: function(table, query, valueField, valueShouldBe) {
+																																				this.debug("checkFieldValueEqualsAcrossRecords: table -> " + table + ", query -> " + query + ", valueField -> " + valueField + ", valueShouldBe -> " + valueShouldBe);
+																																				var gr = new GlideRecord(table);
+																																				gr.addEncodedQuery(query);
+																																				gr.query();
+																																				
+																																				var actualValue;
+																																				while (gr.next()) {
+																																					actualValue = gr.getValue(valueField);
+																																					if (actualValue != valueShouldBe) {
+																																						this.debug("checkFieldValueEqualsAcrossRecords: actualValue -> " + actualValue + ", aborting");
+																																						return false;
+																																					}
+																																				}
+																																				
+																																				return true;
+																																			},
+																																			
+																																			/**
+ 																																			* Check to see if field values of target record match desired values.
+ 																																			*
+ 																																			* @example
+ 																																			* var allMatch = v.checkFieldValues("sysauto_pa", "name=MyJobName", {
+ 																																				*   "active": true,
+ 																																				*   "some_other_field": "some other value"
+ 																																				* }).allMatch;
+ 																																				*
+ 																																				* @param {String} table - Table to check
+ 																																					* @param {String} query - Query to use when looking up record to check
+ 																																						* @param {QueryObject} fields - Object representing the field/value pairs to check
+ 																																							*
+ 																																							* @return {CheckFieldValuesResult}
+ 																																								*/
+																																								checkFieldValues: function(table, query, fields) {
+																																									this.debug("checkFieldValues: table -> " + table + ", query -> " + query + ", fields -> " + JSUtil.describeObject(fields));
+																																									
+																																									var matchObj = {
+																																										"allMatch": false,
+																																										"match": [],
+																																										"miss": []
+																																									};
+																																									
+																																									var gr = new GlideRecord(table);
+																																									gr.addEncodedQuery(query);
+																																									gr.query();
+																																									
+																																									if (gr.next()) {
+																																										var result = this._fieldsMatch(gr, fields);
+																																										this.last = result;
+																																										return result;
+																																									}
+																																									
+																																									return matchObj;
+																																								},
+																																								
+																																								/**
+ 																																								* Check for the existence of an event. Commonly used to make sure the user
+ 																																								* has followed all intructions, including tasks that do not modify data such
+ 																																								* as viewing a specific record.
+ 																																								*
+ 																																								* @example
+ 																																								* // Check to see if the user has viewed a specific bucket group
+ 																																								* var eventExists = v.checkForEvent("user.view", "pa_bucket_groups", "52350813bf230100b96dac808c073978");
+ 																																								*
+ 																																								* @param {String} name - event name
+ 																																									* @param {String} table - table the event is associated with (optional)
+ 																																										* @param {String} uriContains - check to see if the event's URI contains this value
+ 																																											* @param {String} parm1 - event parm1
+ 																																												* @param {String} parm2 - event parm2
+ 																																													*
+ 																																													* @return {Boolean} true if event exists, false if it does not
+ 																																														*/
+																																														checkForEvent: function(name, table, uriContains, parm1, parm2) {
+																																															this.debug("checkForEvent: name -> " + name);
+																																															var gr = new GlideRecord("sysevent");
+																																															gr.addQuery("name", name);
+																																															
+																																															if (JSUtil.notNil(table)) {
+																																																this.debug("checkForEvent: table -> " + table);
+																																																gr.addQuery("table", table);
+																																															}
+																																															
+																																															if (JSUtil.notNil(uriContains)) {
+																																																this.debug("checkForEvent: uriContains -> " + uriContains);
+																																																gr.addQuery("uri", "CONTAINS", uriContains);
+																																															}
+																																															
+																																															if (JSUtil.notNil(parm1)) {
+																																																this.debug("checkForEvent: parm1 -> " + parm1);
+																																																gr.addQuery("parm1", parm1);
+																																															}
+																																															
+																																															if (JSUtil.notNil(parm2)) {
+																																																this.debug("checkForEvent: parm2 -> " + parm2);
+																																																gr.addQuery("parm2", parm2);
+																																															}
+																																															
+																																															gr.query();
+																																															
+																																															var foundEvent = gr.hasNext();
+																																															
+																																															this.debug("checkForEvent: foundEvent -> " + foundEvent);
+																																															
+																																															return foundEvent;
+																																														},
+																																														
+																																														/**
+ 																																														* Checks for a transaction matching the specified criteria. Use this
+ 																																														* to verify actions taken by the user that may not modify data, such as
+ 																																														* viewing a list of records or viewing a specific homepage.
+ 																																														*
+ 																																														* @example
+ 																																														* // Check to see if user 'forest.orea' viewed a particular item.
+ 																																														* // Note there is no table associated with this particular transaction.
+ 																																														* var b = v.checkForTransaction("", "/$pa_detailed.do", ["jvar_uuid=..."], "forest.orea");
+ 																																														*
+ 																																														* @param {String} table - table the transaction is associated with
+ 																																															* @param {String} startsWith - transaction URI should start with this string
+ 																																																* @param {Array.<String>} urlTerms - array of strings to look for in the transaction URI
+ 																																																	* @param {String} user - user that generated the transaction
+ 																																																		*
+ 																																																		* @return {Boolean} true if transaction exists, false if it does not
+ 																																																			*/
+																																																			checkForTransaction: function(table, startsWith, urlTerms, user) {
+																																																				var gr = new GlideRecord("syslog_transaction");
+																																																				gr.addQuery("table", table);
+																																																				gr.addQuery("sys_created_by", user || gs.getUserName());
+																																																				gr.addQuery("url", "STARTSWITH", startsWith);
+																																																				
+																																																				var i;
+																																																				for (i=0; i<urlTerms.length; i++) {
+																																																					gr.addQuery("url", "CONTAINS", urlTerms[i]);
+																																																				}
+																																																				
+																																																				gr.query();
+																																																				return gr.next();
+																																																			},
+																																																			
+																																																			/**
+ 																																																			* Checks to see if the user has added a particular column to their personalized
+ 																																																			* list view on a particular table / view.
+ 																																																			*
+ 																																																			* @example
+ 																																																			* // Check to see if the current user has added 'resolved_at' to their 'incident' list view
+ 																																																			* var b = v.checkForColumnInPersonalizedList("incident", "resolved_at");
+ 																																																			*
+ 																																																			* @param {String} table - table we are checking
+ 																																																				* @param {String} column - column to look for
+ 																																																					* @param {String} user - sys_id of the user we are validating - defaults to current user if not specified
+ 																																																						* @param {String} view - not currently implemented
+ 																																																							*
+ 																																																							* @return {Boolean} true if the column is in the list, false if it is not
+ 																																																								*/
+																																																								checkForColumnInPersonalizedList: function(table, column, user, view) {
+																																																									var gr = new GlideRecord("sys_ui_list");
+																																																									gr.addQuery("name", table);
+																																																									gr.addQuery("sys_user", user || gs.getUserID());
+																																																									gr.query();
+																																																									
+																																																									if (gr.next()) {
+																																																										var grListElement = new GlideRecord("sys_ui_list_element");
+																																																										grListElement.addQuery("list_id", gr.sys_id);
+																																																										grListElement.addQuery("element", column);
+																																																										grListElement.query();
+																																																										
+																																																										if (grListElement.next()) {
+																																																											return true;
+																																																										}
+																																																									}
+																																																									
+																																																									return false;
+																																																								},
+																																																								
+																																																								/**
+ 																																																								* Checks to see if a condition field has a particular query clause. Useful if you need to
+ 																																																								* check for a condition all in one statement.
+ 																																																								*
+ 																																																								* @example
+ 																																																								* // Check for clause 'taskslatable_sla.type=SLA' in the 'conditions' field on the specified record
+ 																																																								* var hasClause = v.checkForClauseInConditionField("pa_cubes", "sys_id", "e6640170d7002100b96d45a3ce610341", "conditions", "taskslatable_sla.type=SLA");
+ 																																																								*
+ 																																																								* @param {String} table - table the target record resides in
+ 																																																									* @param {String} matchField - field we are using to look up the record
+ 																																																										* @param {String} matchValue - value expected to exist in the matchField
+ 																																																											* @param {String} queryField - field in the target record holding the condition we are checking
+ 																																																												* @param {String} clause - query clause we are checking for
+ 																																																													*
+ 																																																													* @return {Boolean} true if query has the clause, false if it does not
+ 																																																														*/
+																																																														checkForClauseInConditionField: function(table, matchField, matchValue, queryField, clause) {
+																																																															this.debug("checkForClauseInConditionField: table -> " + table + ", matchField -> " + matchField + ", matchValue -> " + matchValue + ", queryField -> " + queryField + ", clause -> " + clause);
+																																																															
+																																																															var query = this._getQueryFromField(table, matchField, matchValue, queryField);
+																																																															return this.queryHasClause(query, clause);
+																																																														},
+																																																														
+																																																														/**
+ 																																																														* Shorthand method to get the sys_id of the record that matches the specified query.
+ 																																																														* Similar to getRecord, but returns the sys_id instead of the entire GlideRecord.
+ 																																																														*
+ 																																																														* @param {String} table - table to query from
+ 																																																															* @param {QueryObject} queryParams - object representation of the field/value pairs to search for
+ 																																																																*
+ 																																																																* @return {String} sys_id of the matched record
+ 																																																																	*/
+																																																																	getSysId: function(table, queryParams) {
+																																																																		this.debug("getSysId: table -> " + table);
+																																																																		
+																																																																		var qn, qv, qType;
+																																																																		var gr = new GlideRecord(table);
+																																																																		for (qn in queryParams) {
+																																																																			qv = queryParams[qn];
+																																																																			
+																																																																			// If the value is an array, we have to extract the query type
+																																																																			if (qv instanceof Array) {
+																																																																				qType = qv[0];
+																																																																				gr.addQuery(qn, qType, qv[1]);
+																																																																			} else {
+																																																																				gr.addQuery(qn, qv);
+																																																																			}
+																																																																		}
+																																																																		
+																																																																		this.debug("getSysId: query -> " + gr.getEncodedQuery());
+																																																																		
+																																																																		gr.query();
+																																																																		
+																																																																		if (gr.next()) {
+																																																																			var sysId = gr.getValue("sys_id");
+																																																																			this.debug("getSysId: found record with sys_id " + sysId);
+																																																																			return sysId;
+																																																																		} else {
+																																																																			this.debug("_getSysId: no record found");
+																																																																			return "";
+																																																																		}
+																																																																	},
+																																																																	
+																																																																	/**
+ 																																																																	* Get a GlideRecord object for the specified query params
+ 																																																																	*
+ 																																																																	* @param {String} table - table to query from
+ 																																																																		* @param {QueryObject} queryParams - object representation of the field/value pairs to search for
+ 																																																																			*
+ 																																																																			* @return {GlideRecord}
+ 																																																																				*/
+																																																																				getRecord: function(table, queryParams) {
+																																																																					var qn, qv, qType;
+																																																																					var gr = new GlideRecord(table);
+																																																																					for (qn in queryParams) {
+																																																																						qv = queryParams[qn];
+																																																																						
+																																																																						// If the value is an array, we have to extract the query type
+																																																																						if (qv instanceof Array) {
+																																																																							qType = qv[0];
+																																																																							gr.addQuery(qn, qType, qv[1]);
+																																																																						} else {
+																																																																							gr.addQuery(qn, qv);
+																																																																						}
+																																																																					}
+																																																																					
+																																																																					this.debug("getRecord: looking for record in " + table + " with query " + gr.getEncodedQuery());
+																																																																					
+																																																																					gr.query();
+																																																																					
+																																																																					if (gr.next()) {
+																																																																						this.debug("getRecord: found record '" + gr.getDisplayValue() + "' with sys_id '" + gr.sys_id + "'");
+																																																																						return gr;
+																																																																					} else {
+																																																																						return false;
+																																																																					}
+																																																																				},
+																																																																				
+																																																																				/**
+ 																																																																				* Check a user preference to see if it equals the desired value
+ 																																																																				*
+ 																																																																				* @example
+ 																																																																				* // Check to see if the current user's 'rowcount' preference equals 20
+ 																																																																				* var matches = v.checkUserPreferenceEquals("rowcount", 20);
+ 																																																																				*
+ 																																																																				* @param {String} preference - name of preference to check
+ 																																																																					* @param {String} expectedValue - value we expect
+ 																																																																						* @param {String} user - sys_id of the user to check
+ 																																																																							*
+ 																																																																							* @return {Boolean} true if the preference matches the expected value, false if it does not
+ 																																																																								*/
+																																																																								checkUserPreferenceEquals: function(preference, expectedValue, user) {
+																																																																									this.debug("checkUserPreferenceEquals: " + preference + " should equal " + expectedValue);
+																																																																									var prefValue = this._getUserPreference(preference, user);
+																																																																									var prefMatch = prefValue == expectedValue;
+																																																																									
+																																																																									this.debug("checkUserPreferenceEquals: got preference value '" + prefValue + "'");
+																																																																									this.debug("checkUserPreferenceEquals: " + expectedValue + " == " + prefValue + "? " + prefMatch);
+																																																																									return prefMatch;
+																																																																								},
+																																																																								
+																																																																								checkRowCountEquals: function(table, query, expectedCount) {
+																																																																									return (this._getRowCount(table, query) == expectedCount);
+																																																																								},
+																																																																								
+																																																																								_fieldsMatch: function(gr, obj) {
+																																																																									var hasFlags;
+																																																																									var match = false;
+																																																																									var overrideMatch = false;
+																																																																									var matchObj = {
+																																																																										"allMatch": false,
+																																																																										"matchedFields": [],
+																																																																										"missedFields":  []
+																																																																									};
+																																																																									
+																																																																									this.debug("_fieldsMatch: checking for fields using obj -> " + JSUtil.describeObject(obj));
+																																																																									var f, v, originalExpectedValue, expectedValue, grValue, match;
+																																																																									for (f in obj) {
+																																																																										v = obj[f];
+																																																																										
+																																																																										// If the expected value is an array, we may have additional processing to do
+																																																																										if (v instanceof Array) {
+																																																																											expectedValue = v[0];
+																																																																											hasFlags = true;
+																																																																										} else {
+																																																																											expectedValue = obj[f];
+																																																																											hasFlags = false;
+																																																																										}
+																																																																										
+																																																																										grValue = gr.getValue(f);
+																																																																										originalValue = grValue;
+																																																																										originalExpectedValue = expectedValue;
+																																																																										
+																																																																										// Check the remaining elements for flags, preprocess the expected value accordingly
+																																																																										if (hasFlags) {
+																																																																											var flag;
+																																																																											for (flag=1; flag<v.length; flag++) {
+																																																																												this.debug("_fieldsMatch: applying flag '" + v[flag] + "' for field '" + f + "'");
+																																																																												
+																																																																												if (v[flag] == "ignoreWhitespace") {
+																																																																													// Strip all whitespace values from expected and actual value before comparing
+																																																																													expectedValue = expectedValue.replace(/\s/g, "");
+																																																																													grValue = grValue.replace(/\s/g, "");
+																																																																													
+																																																																												} else if (v[flag] == "ignoreCase") {
+																																																																													// Converg expected and actual values to upper case before comparing
+																																																																													expectedValue = expectedValue.toUpperCase();
+																																																																													grValue = grValue.toUpperCase();
+																																																																													
+																																																																												} else if (v[flag] == "contains") {
+																																																																													overrideMatch = true;
+																																																																													match = grValue.indexOf(expectedValue) >= 0;
+																																																																													
+																																																																												} else if (v[flag] == "startsWith") {
+																																																																													overrideMatch = true;
+																																																																													match = grValue.startsWith(expectedValue);
+																																																																													
+																																																																												} else if (v[flag] == "endsWith") {
+																																																																													overrideMatch = true;
+																																																																													match = grValue.endsWith(expectedValue);
+																																																																													
+																																																																												}
+																																																																											}
+																																																																										}
+																																																																										
+																																																																										// If the match hasn't been overriden by a flag, do a simple comparison
+																																																																										if (!overrideMatch) {
+																																																																											match = (grValue == expectedValue);
+																																																																										}
+																																																																										
+																																																																										this.debug("_fieldsMatch: field '" + f + "' expected '" + originalExpectedValue + "', got '" + originalValue + "'. match? " + match);
+																																																																										
+																																																																										if (match) {
+																																																																											matchObj.matchedFields.push(f);
+																																																																										} else {
+																																																																											matchObj.missedFields.push(f);
+																																																																										}
+																																																																									}
+																																																																									
+																																																																									matchObj.allMatch = (matchObj.missedFields.length == 0);
+																																																																									return matchObj;
+																																																																								},
+																																																																								
+																																																																								_getRowCount: function(table, query) {
+																																																																									this.debug("_getRowCount: table -> " + table + ", query -> " + query);
+																																																																									var count = new GlideAggregate(table);
+																																																																									count.addEncodedQuery(query);
+																																																																									count.addAggregate("COUNT");
+																																																																									count.query();
+																																																																									
+																																																																									if (count.next()) {
+																																																																										return count.getAggregate("COUNT");
+																																																																									} else {
+																																																																										return 0;
+																																																																									}
+																																																																								},
+																																																																								
+																																																																								_getUserPreference: function(preference, user) {
+																																																																									var u = user || gs.getUserID();
+																																																																									this.debug("_getUserPreference: getting preference '" + preference + "' for user '" + u + "'");
+																																																																									var gr = new GlideRecord("sys_user_preference");
+																																																																									gr.addQuery("name", preference);
+																																																																									gr.addQuery("user", u);
+																																																																									gr.query();
+																																																																									
+																																																																									if (gr.next()) {
+																																																																										var pref = gr.getValue("value");
+																																																																										this.debug("_getUserPreference: " + preference + " is " + pref);
+																																																																										return pref;
+																																																																									} else {
+																																																																										this.debug("_getUserPreference: preference not found for user");
+																																																																										return "";
+																																																																									}
+																																																																								},
+																																																																								
+																																																																								_getQueryFromField: function(table, matchField, matchValue, queryField) {
+																																																																									this.debug("_getQueryFromField: table -> " + table + ", matchField -> " + matchField + ", matchValue -> " + matchValue + ", queryField -> " + queryField);
+																																																																									
+																																																																									var gr = new GlideRecord(table);
+																																																																									gr.addQuery(matchField, matchValue);
+																																																																									gr.query();
+																																																																									
+																																																																									if (gr.next()) {
+																																																																										var query = gr.getValue(queryField);
+																																																																										this.debug("_getQueryFromField: found query -> " + query);
+																																																																										
+																																																																										return gr.getValue(queryField);
+																																																																									} else {
+																																																																										this.debug("_getQueryFromField: could not find the specified record");
+																																																																										return "";
+																																																																									}
+																																																																								},
+																																																																								
+																																																																								/**
+ 																																																																								* Checks to see if a query string contains the specified clause
+ 																																																																								*
+ 																																																																								* @param {String} query - encoded query string to check
+ 																																																																									* @param {String} clause - individual clause to search for, e.g. 'active=true'
+ 																																																																										*
+ 																																																																										* @return {Boolean} true if query has clause, false if it does not
+ 																																																																											*/
+																																																																											queryHasClause: function(query, clause) {
+																																																																												this.debug("queryHasClause: query -> " + query + ", clause -> " + clause);
+																																																																												
+																																																																												var au = new ArrayUtil();
+																																																																												var parts = query.split("^");
+																																																																												var hasClase = au.contains(parts, clause);
+																																																																												
+																																																																												this.debug("queryHasClause: hasClase -> " + hasClase);
+																																																																												
+																																																																												return hasClase;
+																																																																											},
+																																																																											
+																																																																											//Service Portal Simulator Specific Functions
+																																																																											findSPContainers : function(pageID) {
+																																																																												var contArray = [];
+																																																																												var i = 0;
+																																																																												
+																																																																												var contRec = new GlideRecord('sp_container');
+																																																																												contRec.addQuery('sp_page', pageID);
+																																																																												contRec.orderBy('order');
+																																																																												contRec.query();
+																																																																												while (contRec.next()) {
+																																																																													//contArray.push(contRec.sys_id.toString());
+																																																																													contArray[i] = new GlideRecord('sp_container');
+																																																																													contArray[i].get(contRec.sys_id);
+																																																																													i++;
+																																																																												}
+																																																																												return contArray;
+																																																																											},
+																																																																											
+																																																																											findSPRows : function(containerID) {
+																																																																												var rowArray = [];
+																																																																												var i = 0;
+																																																																												
+																																																																												var rowRec = new GlideRecord('sp_row');
+																																																																												rowRec.addQuery('sp_container', containerID);
+																																																																												rowRec.orderBy('order');
+																																																																												rowRec.query();
+																																																																												
+																																																																												while (rowRec.next()) {
+																																																																													//rowArray.push(rowRec.sys_id.toString());
+																																																																													rowArray[i] = new GlideRecord('sp_row');
+																																																																													rowArray[i].get(rowRec.sys_id);
+																																																																													i++;
+																																																																												}
+																																																																												return rowArray;
+																																																																											},
+																																																																											
+																																																																											findSPColumns : function(rowID) {
+																																																																												var colArray = [];
+																																																																												var i = 0;
+																																																																												
+																																																																												var colRec = new GlideRecord('sp_column');
+																																																																												colRec.addQuery('sp_row', rowID);
+																																																																												colRec.orderBy('order');
+																																																																												colRec.query();
+																																																																												
+																																																																												while (colRec.next()) {
+																																																																													//colArray.push(colRec.sys_id.toString());
+																																																																													colArray[i] = new GlideRecord('sp_column');
+																																																																													colArray[i].get(colRec.sys_id);
+																																																																													i++;
+																																																																												}
+																																																																												
+																																																																												return colArray;
+																																																																											},
+																																																																											
+																																																																											findSPWidgetInstances : function(columnID) {
+																																																																												var wiArray = [];
+																																																																												var i = 0;
+																																																																												
+																																																																												var wiRec = new GlideRecord('sp_instance');
+																																																																												wiRec.addQuery('sp_column', columnID);
+																																																																												wiRec.orderBy('order');
+																																																																												wiRec.query();
+																																																																												
+																																																																												while (wiRec.next()) {
+																																																																													//wiArray.push(wiRec.sys_id.toString());
+																																																																													wiArray[i] = new GlideRecord('sp_instance');
+																																																																													wiArray[i].get(wiRec.sys_id);
+																																																																													i++;
+																																																																												}
+																																																																												
+																																																																												return wiArray;
+																																																																											},
+																																																																											
+																																																																											debug: function(msg) {
+																																																																												if (this.debugEnabled) {
+																																																																													gs.print(msg, "SPLIValidator");
+																																																																												}
+																																																																											},
+																																																																											
+																																																																											type: 'Validator'
+																																																																										};]]></script>
+        <sys_class_name>sys_script_include</sys_class_name>
+        <sys_created_by>marc.guy</sys_created_by>
+        <sys_created_on>2019-02-22 13:27:10</sys_created_on>
+        <sys_customer_update>false</sys_customer_update>
+        <sys_id>5def1ed5db3327002dbbf3de3b96193c</sys_id>
+        <sys_mod_count>12</sys_mod_count>
+        <sys_name>Validator</sys_name>
+        <sys_package display_value="Sim Client" source="x_snc_sim_client">14de5e51db3327002dbbf3de3b961924</sys_package>
+        <sys_policy>protected</sys_policy>
+        <sys_replace_on_upgrade>false</sys_replace_on_upgrade>
+        <sys_scope display_value="Sim Client">14de5e51db3327002dbbf3de3b961924</sys_scope>
+        <sys_update_name>sys_script_include_5def1ed5db3327002dbbf3de3b96193c</sys_update_name>
+        <sys_updated_by>marc.guy</sys_updated_by>
+        <sys_updated_on>2019-04-18 10:29:03</sys_updated_on>
+    </sys_script_include>
+</record_update>

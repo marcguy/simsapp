@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update table="sys_ws_operation">
+    <sys_ws_operation action="INSERT_OR_UPDATE">
+        <active>true</active>
+        <consumes>application/json,application/xml,text/xml</consumes>
+        <consumes_customized>false</consumes_customized>
+        <default_operation_uri/>
+        <enforce_acl>cf9d01d3e73003009d6247e603f6a990</enforce_acl>
+        <http_method>POST</http_method>
+        <name>validate</name>
+        <operation_script><![CDATA[(function process(/*RESTAPIRequest*/ request, /*RESTAPIResponse*/ response) {
+
+    // implement resource here
+	
+	var requestBody = request.body;
+	
+	var gr = new GlideRecord('x_snc_sim_client_validation');
+	gr.script = requestBody.data.validation_script;
+	gr.task = requestBody.data.task;
+	gr.insert();
+	
+	var evaluator = new GlideScopedEvaluator();
+	evaluator.putVariable('answer', '');
+	evaluator.evaluateScript(gr, 'script');
+	
+	var answer = evaluator.getVariable('answer');
+	var result = answer.result;
+	var feedback = answer.recommendation;
+	
+	if(gs.getProperty('x_snc_sim_client.debug_enabled') == 'true'){
+		gs.info('running validation script: ' + gr.script);
+		gs.info(result);
+		gs.info(feedback);
+	}
+	
+	gr.result = result;
+	gr.feedback = feedback;
+	gr.update();
+	
+	var payload = {"result":result,
+		"recommendation":feedback,
+				  "debug": answer};
+
+	response.setBody(payload);
+
+})(request, response);]]></operation_script>
+        <operation_uri>/api/x_snc_sim_client/client/validate</operation_uri>
+        <produces>application/json,application/xml,text/xml</produces>
+        <produces_customized>false</produces_customized>
+        <relative_path>/validate</relative_path>
+        <request_example/>
+        <requires_acl_authorization>true</requires_acl_authorization>
+        <requires_authentication>true</requires_authentication>
+        <requires_snc_internal_role>true</requires_snc_internal_role>
+        <short_description/>
+        <sys_class_name>sys_ws_operation</sys_class_name>
+        <sys_created_by>marc.guy</sys_created_by>
+        <sys_created_on>2019-03-12 16:19:54</sys_created_on>
+        <sys_customer_update>false</sys_customer_update>
+        <sys_id>fb543f03db047300b389466215961971</sys_id>
+        <sys_mod_count>5</sys_mod_count>
+        <sys_name>validate</sys_name>
+        <sys_package display_value="Sim Client" source="x_snc_sim_client">14de5e51db3327002dbbf3de3b961924</sys_package>
+        <sys_policy>protected</sys_policy>
+        <sys_replace_on_upgrade>false</sys_replace_on_upgrade>
+        <sys_scope display_value="Sim Client">14de5e51db3327002dbbf3de3b961924</sys_scope>
+        <sys_update_name>sys_ws_operation_fb543f03db047300b389466215961971</sys_update_name>
+        <sys_updated_by>marc.guy</sys_updated_by>
+        <sys_updated_on>2019-04-18 10:29:04</sys_updated_on>
+        <web_service_definition display_value="Client">f2023703db047300b3894662159619c4</web_service_definition>
+        <web_service_version/>
+    </sys_ws_operation>
+</record_update>
